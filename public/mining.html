@@ -3,36 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NXRA Mining</title>
+    <title>Nxracoin Mining</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background: #1a1a2e; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .dashboard { font-size: 24px; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #2e2e4e; padding-bottom: 10px; }
-        .circle-container {
-            width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%;
-            margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;
-            box-shadow: 0 0 20px rgba(77, 77, 255, 0.4);
-        }
-        .timer { font-size: 32px; font-weight: bold; margin: 10px 0; }
-        .tap-text { font-size: 14px; color: #aaa; }
-        .claim-btn {
-            background: #00d9a5; color: white; border: none; padding: 18px 60px;
-            border-radius: 12px; font-size: 20px; font-weight: bold; margin-top: 40px;
-            cursor: pointer; width: 100%; max-width: 300px; box-shadow: 0 4px 15px rgba(0, 217, 165, 0.3);
-        }
-        .info { margin-top: 30px; color: #888; font-size: 16px; }
+        body { background: #1a1a2e; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
+        .dashboard-text { font-size: 22px; font-weight: bold; border-bottom: 1px solid #333; padding: 15px; }
+        .balance-container { margin-top: 20px; font-size: 18px; color: #00d9a5; font-weight: bold; }
+        .circle-container { width: 210px; height: 210px; border: 6px solid #4d4dff; border-radius: 50%; margin: 30px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 15px rgba(77, 77, 255, 0.4); }
+        .timer { font-size: 35px; font-weight: bold; margin: 5px 0; }
+        .claim-btn { background: #00d9a5; color: white; border: none; padding: 15px 0; width: 85%; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .claim-btn:disabled { background: #2c2c3e; color: #666; cursor: not-allowed; }
+        .info { margin-top: 20px; color: #888; font-size: 14px; line-height: 1.6; }
     </style>
 </head>
 <body>
-    <div class="dashboard">Dashboard</div>
-    
+    <div class="dashboard-text">Dashboard</div>
+    <div class="balance-container">Balance: <span id="balance">0</span> NXRA</div>
+
     <div class="circle-container">
-        <span style="font-size: 40px;">⚡</span>
+        <span style="font-size: 35px;">⚡</span>
         <div class="timer" id="time">00:00:00</div>
-        <div class="tap-text">Tap below to start</div>
+        <div style="font-size: 12px; color: #aaa;">Tap below to start</div>
     </div>
 
-    <button class="claim-btn" id="claimBtn" onclick="start()">CLAIM 1000 NXRA</button>
+    <button class="claim-btn" id="claimBtn" onclick="claim()">CLAIM 1000 NXRA</button>
 
     <div class="info">
         Mining Rate: 83.3 NXRA/Hour<br>
@@ -40,15 +34,64 @@
     </div>
 
     <script>
-        let tg = window.Telegram.WebApp;
+        const tg = window.Telegram.WebApp;
         tg.expand();
+        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
 
-        function start() {
-            document.getElementById('claimBtn').innerText = "MINING...";
-            document.getElementById('claimBtn').disabled = true;
-            // Here you would typically call your API to save the start time in DB
-            alert("Mining Started! Rewards will be added after 12h.");
+        async function loadData() {
+            if (!userId) return;
+            try {
+                const res = await fetch(`/api?userId=${userId}`);
+                const data = await res.json();
+                document.getElementById('balance').innerText = data.balance || 0;
+                if (data.lastMining) {
+                    startTimer(data.lastMining);
+                }
+            } catch (e) { console.error("Load Error:", e); }
         }
+
+        function startTimer(lastMiningTime) {
+            const waitTime = 12 * 60 * 60 * 1000;
+            const nextClaim = lastMiningTime + waitTime;
+
+            const x = setInterval(() => {
+                const now = new Date().getTime();
+                const distance = nextClaim - now;
+
+                if (distance < 0) {
+                    clearInterval(x);
+                    document.getElementById('time').innerText = "00:00:00";
+                    document.getElementById('claimBtn').disabled = false;
+                    document.getElementById('claimBtn').innerText = "CLAIM 1000 NXRA";
+                } else {
+                    document.getElementById('claimBtn').disabled = true;
+                    document.getElementById('claimBtn').innerText = "MINING...";
+                    const h = Math.floor(distance / (3600000));
+                    const m = Math.floor((distance % 3600000) / 60000);
+                    const s = Math.floor((distance % 60000) / 1000);
+                    document.getElementById('time').innerText = 
+                        `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                }
+            }, 1000);
+        }
+
+        async function claim() {
+            if (!userId) return;
+            try {
+                const res = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'claim', userId: userId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                    loadData();
+                }
+            } catch (e) { console.error("Claim Error:", e); }
+        }
+
+        loadData();
     </script>
 </body>
 </html>
