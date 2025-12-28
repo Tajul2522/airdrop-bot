@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ডাটাবেজ মডেল (৩ লক্ষ ইউজারের জন্য অপ্টিমাইজড)
+// Database Schema
 const UserSchema = new mongoose.Schema({
     telegramId: { type: Number, unique: true, index: true },
     username: String,
@@ -13,12 +13,12 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// MongoDB কানেকশন
+// MongoDB Connection
 mongoose.connect(process.env.MONGO_URI);
 
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
-    const refId = ctx.payload; // রেফারেল চেক
+    const refId = ctx.payload;
 
     try {
         let user = await User.findOne({ telegramId: userId });
@@ -34,10 +34,11 @@ bot.start(async (ctx) => {
             }
         }
         
-        ctx.reply(`স্বাগতম! ৩ লক্ষ ইউজারের বিশাল এয়ারড্রপে আপনি যোগ দিয়েছেন।`,
+        ctx.replyWithMarkdown(`👋 *Welcome to the Official Airdrop!* \n\nComplete all tasks to earn rewards.`,
             Markup.inlineKeyboard([
-                [Markup.button.callback('টাস্ক সম্পন্ন করুন', 'tasks')],
-                [Markup.button.callback('ব্যালেন্স ও রেফার', 'balance')]
+                [Markup.button.callback('🚀 Join Airdrop Tasks', 'tasks')],
+                [Markup.button.callback('💰 Balance & Referral', 'balance')],
+                [Markup.button.callback('💳 Submit Wallet', 'wallet')]
             ])
         );
     } catch (e) { console.log(e); }
@@ -46,20 +47,32 @@ bot.start(async (ctx) => {
 bot.action('balance', async (ctx) => {
     const user = await User.findOne({ telegramId: ctx.from.id });
     const refLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
-    ctx.reply(`আপনার ব্যালেন্স: ${user ? user.balance : 0} পয়েন্ট\nআপনার রেফারেল লিংক: ${refLink}`);
+    ctx.replyWithMarkdown(`👤 *User:* @${ctx.from.username || 'User'}\n💵 *Balance:* ${user ? user.balance : 0} Points\n\n🔗 *Referral Link:* \n${refLink}`);
 });
 
-// Vercel Handler (বারবার মেসেজ আসা বন্ধ করতে এটি গুরুত্বপূর্ণ)
+bot.action('tasks', (ctx) => {
+    ctx.replyWithMarkdown(`📢 *Tasks:*\n\n1. Join @YourChannel\n2. Join @YourGroup\n\nClick "Verify" after joining.`);
+});
+
+bot.action('wallet', (ctx) => {
+    ctx.reply('Please send your *BEP-20 (BSC) Wallet Address* as a text message.');
+});
+
+bot.on('text', async (ctx) => {
+    const text = ctx.message.text;
+    if (text.startsWith('0x') && text.length === 42) {
+        await User.findOneAndUpdate({ telegramId: ctx.from.id }, { wallet: text });
+        ctx.reply('✅ Wallet address saved!');
+    }
+});
+
 module.exports = async (req, res) => {
     if (req.method === 'POST') {
         try {
             await bot.handleUpdate(req.body);
-            res.status(200).send('OK'); // টেলিগ্রামকে সাথে সাথে জানানো
-        } catch (err) {
-            console.error(err);
-            res.status(200).send('OK'); // এরর হলেও টেলিগ্রামকে থামানো
-        }
+            res.status(200).send('OK');
+        } catch (err) { res.status(200).send('OK'); }
     } else {
-        res.status(200).send('বট সচল আছে!');
+        res.status(200).send('Bot Running');
     }
 };
