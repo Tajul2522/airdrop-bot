@@ -1,81 +1,119 @@
-<!-- আগের সব CSS ঠিক থাকবে, শুধু স্ক্রিপ্ট (Script) অংশটুকু নিচেরটি দিয়ে রিপ্লেস করুন -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nxracoin Mining</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background: #1a1a2e; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 15px; }
+        .dashboard { font-size: 24px; font-weight: bold; padding: 15px; border-bottom: 1px solid #333; }
+        .balance { color: #00d9a5; font-size: 20px; font-weight: bold; margin: 20px 0; }
+        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 30px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(77, 77, 255, 0.4); }
+        .timer { font-size: 36px; font-weight: bold; }
+        .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 90%; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; }
+        .btn:disabled { background: #333; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">Dashboard</div>
+    <div class="balance">Balance: <span id="bal">0</span> NXRA</div>
 
-<script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
-    const uid = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
-    let itv;
+    <div class="circle">
+        <span style="font-size: 40px;">⚡</span>
+        <div class="timer" id="tm">00:00:00</div>
+        <p style="font-size: 12px; color: #aaa;">Tap below to start</p>
+    </div>
 
-    async function load() {
-        try {
-            const r = await fetch(`/api?userId=${uid}`);
-            const d = await r.json();
-            document.getElementById('bal').innerText = d.balance || 0;
-            
-            // যদি আগে মাইনিং করা হয়ে থাকে (লাস্ট মাইনিং ০ এর বেশি হয়)
-            if (d.lastMining && d.lastMining > 0) {
-                startTimer(Number(d.lastMining));
-            } else {
+    <button class="btn" id="btn" onclick="claim()">CLAIM 1000 NXRA</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // ইউজার আইডি পাওয়ার ক্ষেত্রে সতর্কতা
+        const user = tg.initDataUnsafe.user;
+        const uid = user ? user.id : 0;
+        let itv;
+
+        async function load() {
+            if (uid === 0) {
                 document.getElementById('tm').innerText = "00:00:00";
-                document.getElementById('btn').disabled = false;
+                return;
             }
-        } catch (e) {
-            console.error("Load Error");
-        }
-    }
-
-    function startTimer(lm) {
-        clearInterval(itv);
-        const waitTime = 12 * 60 * 60 * 1000; // 12 Hours
-        const next = lm + waitTime;
-
-        itv = setInterval(() => {
-            const now = Date.now();
-            const diff = next - now;
-
-            if (diff <= 0) {
-                clearInterval(itv);
-                document.getElementById('tm').innerText = "00:00:00";
-                document.getElementById('btn').disabled = false;
-                document.getElementById('btn').innerText = "CLAIM 1000 NXRA";
-            } else {
-                document.getElementById('btn').disabled = true;
-                document.getElementById('btn').innerText = "MINING...";
+            try {
+                // ক্যাশ এড়াতে টাইমস্ট্যাম্প যোগ করা হয়েছে
+                const r = await fetch(`/api?userId=${uid}&v=${Date.now()}`);
+                const d = await r.json();
+                document.getElementById('bal').innerText = d.balance || 0;
                 
-                const h = Math.floor(diff / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                
-                // NaN চেক
-                if (isNaN(h) || isNaN(m) || isNaN(s)) {
-                    document.getElementById('tm').innerText = "00:00:00";
+                let lastMining = Number(d.lastMining) || 0;
+                if (lastMining > 0) {
+                    startTimer(lastMining);
                 } else {
-                    document.getElementById('tm').innerText = 
-                        `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                    showReady();
                 }
+            } catch (e) { 
+                showReady();
             }
-        }, 1000);
-    }
-
-    async function claim() {
-        document.getElementById('btn').disabled = true;
-        try {
-            const r = await fetch('/api', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({action: 'claim', userId: uid}) 
-            });
-            const d = await r.json();
-            if (d.success) { 
-                load(); 
-                tg.HapticFeedback.notificationOccurred('success'); 
-            } else {
-                alert("Please wait for the timer!");
-            }
-        } catch (e) {
-            alert("Connection Error!");
-            document.getElementById('btn').disabled = false;
         }
-    }
-    load();
-</script>
+
+        function showReady() {
+            document.getElementById('tm').innerText = "00:00:00";
+            document.getElementById('btn').disabled = false;
+            document.getElementById('btn').innerText = "CLAIM 1000 NXRA";
+        }
+
+        function startTimer(lm) {
+            clearInterval(itv);
+            const waitTime = 12 * 60 * 60 * 1000;
+            const next = lm + waitTime;
+
+            itv = setInterval(() => {
+                const now = Date.now();
+                const diff = next - now;
+
+                if (diff <= 0) {
+                    clearInterval(itv);
+                    showReady();
+                } else {
+                    document.getElementById('btn').disabled = true;
+                    document.getElementById('btn').innerText = "MINING...";
+                    
+                    let h = Math.floor(diff / 3600000);
+                    let m = Math.floor((diff % 3600000) / 60000);
+                    let s = Math.floor((diff % 60000) / 1000);
+                    
+                    // NaN প্রোটেকশন
+                    if (isNaN(h)) h = 0; if (isNaN(m)) m = 0; if (isNaN(s)) s = 0;
+
+                    document.getElementById('tm').innerText = 
+                        (h < 10 ? '0'+h : h) + ":" + 
+                        (m < 10 ? '0'+m : m) + ":" + 
+                        (s < 10 ? '0'+s : s);
+                }
+            }, 1000);
+        }
+
+        async function claim() {
+            if (uid === 0) return;
+            document.getElementById('btn').disabled = true;
+            try {
+                const r = await fetch('/api', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({action: 'claim', userId: uid}) 
+                });
+                const d = await r.json();
+                if (d.success) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                    load();
+                } else {
+                    alert("Not ready yet!");
+                }
+            } catch (e) { alert("Connection Error!"); }
+        }
+        load();
+    </script>
+</body>
+</html>
