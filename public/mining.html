@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXRA Mining</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background: #1a1a2e; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .dashboard { font-size: 24px; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #2e2e4e; padding-bottom: 10px; }
+        .circle-container {
+            width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%;
+            margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            box-shadow: 0 0 20px rgba(77, 77, 255, 0.4);
+        }
+        .timer { font-size: 32px; font-weight: bold; margin: 10px 0; }
+        .tap-text { font-size: 14px; color: #aaa; }
+        .claim-btn {
+            background: #00d9a5; color: white; border: none; padding: 18px 60px;
+            border-radius: 12px; font-size: 20px; font-weight: bold; margin-top: 40px;
+            cursor: pointer; width: 100%; max-width: 300px; box-shadow: 0 4px 15px rgba(0, 217, 165, 0.3);
+        }
+        .info { margin-top: 30px; color: #888; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">Dashboard</div>
+    
+    <div class="circle-container">
+        <span style="font-size: 40px;">⚡</span>
+        <div class="timer" id="time">00:00:00</div>
+        <div class="tap-text">Tap below to start</div>
+    </div>
+
+    <button class="claim-btn" id="claimBtn" onclick="start()">CLAIM 1000 NXRA</button>
+
+    <div class="info">
+        Mining Rate: 83.3 NXRA/Hour<br>
+        Cycle: 12 Hours
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        function start() {
+            document.getElementById('claimBtn').innerText = "MINING...";
+            document.getElementById('claimBtn').disabled = true;
+            // Here you would typically call your API to save the start time in DB
+            alert("Mining Started! Rewards will be added after 12h.");
+        }
+    </script>
+</body>
+</html>
