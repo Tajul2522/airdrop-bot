@@ -1,7 +1,8 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/mining.html", "destination": "/public/mining.html" },
+    { "source": "/app.html", "destination": "/public/app.html" },
+    { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/api" }
   ]
 }
