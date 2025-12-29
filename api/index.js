@@ -4,7 +4,18 @@ const mongoose = require('mongoose');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = 6955416797; 
 
-// ১. ডাটাবেজ মডেল
+// ১. ডাটাবেজ কানেকশন (নিরাপদ পদ্ধতি)
+let isConnected = false;
+const connectDB = async () => {
+    if (isConnected) return;
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        isConnected = true;
+        console.log("DB Connected");
+    } catch (e) { console.error("DB Connection Failed", e); }
+};
+
+// ডাটাবেজ মডেল
 const UserSchema = new mongoose.Schema({
     telegramId: { type: Number, unique: true, index: true },
     username: String,
@@ -14,29 +25,22 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// ২. ডাটাবেজ কানেকশন ফাংশন
-const connectDB = async () => {
-    if (mongoose.connection.readyState >= 1) return;
-    return mongoose.connect(process.env.MONGO_URI);
-};
-
 // --- এডমিন কমান্ড ---
 bot.command('reset', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    try {
-        await connectDB();
-        await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null });
-        ctx.reply("✅ Admin: Timer reset! Refresh the app.");
-    } catch (e) { ctx.reply("Error in reset"); }
+    await connectDB();
+    await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null });
+    ctx.reply("✅ Admin: Timer reset successfully!");
 });
 
-// --- বটের স্টার্ট কমান্ড ---
+// --- স্টার্ট কমান্ড ---
 bot.start(async (ctx) => {
     try {
         await connectDB();
         const userId = ctx.from.id;
         const refId = ctx.payload;
-        const WEB_APP_URL = `https://airdrop-bot-nine.vercel.app/app.html?v=${Date.now()}`;
+        // ক্যাশ এবং NaN সমস্যা দূর করতে ভার্সন v=2.0 এবং টাইমস্ট্যাম্প যোগ করা হয়েছে
+        const WEB_APP_URL = `https://airdrop-bot-nine.vercel.app/app.html?v=2.0&t=${Date.now()}`;
 
         let user = await User.findOne({ telegramId: userId });
         if (!user) {
@@ -51,7 +55,7 @@ bot.start(async (ctx) => {
             }
         }
 
-        return ctx.replyWithMarkdown(`👋 *Welcome to Nxracoin Reward Bot!*`, 
+        ctx.replyWithMarkdown(`👋 *Welcome to Nxracoin Reward Bot!*`, 
             Markup.inlineKeyboard([
                 [Markup.button.webApp('⛏️ Start Daily Mining', WEB_APP_URL)],
                 [Markup.button.callback('💰 Balance', 'balance')]
@@ -61,14 +65,12 @@ bot.start(async (ctx) => {
 });
 
 bot.action('balance', async (ctx) => {
-    try {
-        await connectDB();
-        const user = await User.findOne({ telegramId: ctx.from.id });
-        ctx.reply(`💰 Balance: ${user ? user.balance : 0} Nxracoin`);
-    } catch (e) { console.error(e); }
+    await connectDB();
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    ctx.reply(`💰 Balance: ${user ? user.balance : 0} Nxracoin`);
 });
 
-// --- ভার্সেল হ্যান্ডলার ---
+// --- ভার্সেল হ্যান্ডলার (সব এরর ফিক্স সহ) ---
 module.exports = async (req, res) => {
     try {
         await connectDB();
@@ -81,10 +83,8 @@ module.exports = async (req, res) => {
             const user = await User.findOne({ telegramId: id });
             if (!user) return res.status(200).json({ balance: 0, lastMining: 0 });
             
-            return res.status(200).json({
-                balance: Number(user.balance) || 0,
-                lastMining: user.lastMining ? new Date(user.lastMining).getTime() : 0
-            });
+            const lastTime = user.lastMining ? new Date(user.lastMining).getTime() : 0;
+            return res.status(200).json({ balance: user.balance, lastMining: lastTime });
         }
 
         if (req.method === 'POST' && req.body.action === 'claim') {
@@ -97,7 +97,7 @@ module.exports = async (req, res) => {
                 await user.save();
                 return res.status(200).json({ success: true, balance: user.balance, lastMining: user.lastMining.getTime() });
             }
-            return res.status(400).json({ success: false });
+            return res.status(200).json({ success: false });
         }
 
         if (req.method === 'POST') {
@@ -106,6 +106,6 @@ module.exports = async (req, res) => {
         res.status(200).send('OK');
     } catch (err) {
         console.error(err);
-        res.status(200).send('OK'); // টেলিগ্রামকে থামানোর জন্য
+        res.status(200).send('OK'); // টেলিগ্রামকে থামানোর জন্য সবসময় OK পাঠানো জরুরি
     }
 };
