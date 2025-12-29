@@ -14,28 +14,35 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// ২. ডাটাবেজ কানেকশন
-mongoose.connect(process.env.MONGO_URI);
+// ২. ডাটাবেজ কানেকশন ফাংশন
+const connectDB = async () => {
+    if (mongoose.connection.readyState >= 1) return;
+    return mongoose.connect(process.env.MONGO_URI);
+};
 
 // --- এডমিন কমান্ড ---
 bot.command('reset', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null });
-    ctx.reply("✅ Admin: Mining timer reset!");
+    try {
+        await connectDB();
+        await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null });
+        ctx.reply("✅ Admin: Timer reset! Refresh the app.");
+    } catch (e) { ctx.reply("Error in reset"); }
 });
 
 // --- বটের স্টার্ট কমান্ড ---
 bot.start(async (ctx) => {
-    const userId = ctx.from.id;
-    const refId = ctx.payload;
-    const WEB_APP_URL = `https://airdrop-bot-nine.vercel.app/app.html?v=1.6`;
-
     try {
+        await connectDB();
+        const userId = ctx.from.id;
+        const refId = ctx.payload;
+        const WEB_APP_URL = `https://airdrop-bot-nine.vercel.app/app.html?v=${Date.now()}`;
+
         let user = await User.findOne({ telegramId: userId });
         if (!user) {
             user = new User({
                 telegramId: userId,
-                username: ctx.from.username,
+                username: ctx.from.username || 'User',
                 referredBy: refId && Number(refId) !== userId ? Number(refId) : null
             });
             await user.save();
@@ -43,7 +50,8 @@ bot.start(async (ctx) => {
                 await User.findOneAndUpdate({ telegramId: user.referredBy }, { $inc: { balance: 5000 } });
             }
         }
-        ctx.replyWithMarkdown(`👋 *Welcome to Nxracoin Reward Bot!*`, 
+
+        return ctx.replyWithMarkdown(`👋 *Welcome to Nxracoin Reward Bot!*`, 
             Markup.inlineKeyboard([
                 [Markup.button.webApp('⛏️ Start Daily Mining', WEB_APP_URL)],
                 [Markup.button.callback('💰 Balance', 'balance')]
@@ -53,35 +61,35 @@ bot.start(async (ctx) => {
 });
 
 bot.action('balance', async (ctx) => {
-    const user = await User.findOne({ telegramId: ctx.from.id });
-    ctx.reply(`💰 Balance: ${user ? user.balance : 0} Nxracoin`);
+    try {
+        await connectDB();
+        const user = await User.findOne({ telegramId: ctx.from.id });
+        ctx.reply(`💰 Balance: ${user ? user.balance : 0} Nxracoin`);
+    } catch (e) { console.error(e); }
 });
 
-// --- ভার্সেল হ্যান্ডলার (সব এরর ফিক্স সহ) ---
+// --- ভার্সেল হ্যান্ডলার ---
 module.exports = async (req, res) => {
-    if (req.method === 'GET') {
-        const { userId } = req.query;
-        const idToFind = Number(userId);
-
-        if (!userId || isNaN(idToFind) || idToFind === 0) {
-            return res.status(200).json({ balance: 0, lastMining: 0 });
+    try {
+        await connectDB();
+        
+        if (req.method === 'GET') {
+            const { userId } = req.query;
+            const id = Number(userId);
+            if (!id || isNaN(id)) return res.status(200).json({ balance: 0, lastMining: 0 });
+            
+            const user = await User.findOne({ telegramId: id });
+            if (!user) return res.status(200).json({ balance: 0, lastMining: 0 });
+            
+            return res.status(200).json({
+                balance: Number(user.balance) || 0,
+                lastMining: user.lastMining ? new Date(user.lastMining).getTime() : 0
+            });
         }
 
-        try {
-            let user = await User.findOne({ telegramId: idToFind });
-            if (!user) return res.status(200).json({ balance: 0, lastMining: 0 });
-            const lastTime = user.lastMining ? new Date(user.lastMining).getTime() : 0;
-            return res.status(200).json({ balance: user.balance, lastMining: lastTime });
-        } catch (e) { return res.status(200).json({ balance: 0, lastMining: 0 }); }
-    }
-
-    if (req.method === 'POST' && req.body.action === 'claim') {
-        const { userId } = req.body;
-        const idToClaim = Number(userId);
-        if (isNaN(idToClaim)) return res.status(400).json({ success: false });
-
-        try {
-            let user = await User.findOne({ telegramId: idToClaim });
+        if (req.method === 'POST' && req.body.action === 'claim') {
+            const id = Number(req.body.userId);
+            const user = await User.findOne({ telegramId: id });
             const now = new Date();
             if (!user.lastMining || (now.getTime() - new Date(user.lastMining).getTime() > 12*60*60*1000)) {
                 user.balance += 1000;
@@ -90,10 +98,14 @@ module.exports = async (req, res) => {
                 return res.status(200).json({ success: true, balance: user.balance, lastMining: user.lastMining.getTime() });
             }
             return res.status(400).json({ success: false });
-        } catch (e) { return res.status(500).json({ success: false }); }
-    }
+        }
 
-    if (req.method === 'POST') {
-        try { await bot.handleUpdate(req.body); res.status(200).send('OK'); } catch (e) { res.status(200).send('OK'); }
-    } else { res.status(200).send('Bot Running'); }
-};/
+        if (req.method === 'POST') {
+            await bot.handleUpdate(req.body);
+        }
+        res.status(200).send('OK');
+    } catch (err) {
+        console.error(err);
+        res.status(200).send('OK'); // টেলিগ্রামকে থামানোর জন্য
+    }
+};
