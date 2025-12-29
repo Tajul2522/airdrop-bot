@@ -7,21 +7,20 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body { background: #1a1a2e; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 15px; }
-        .balance { color: #00d9a5; font-size: 22px; font-weight: bold; margin: 30px 0; }
-        .circle { width: 230px; height: 230px; border: 8px solid #4d4dff; border-radius: 50%; margin: 20px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 25px #4d4dff66; }
-        .timer { font-size: 38px; font-weight: bold; }
+        .balance { color: #00d9a5; font-size: 22px; font-weight: bold; margin: 25px 0; }
+        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 20px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .timer { font-size: 36px; font-weight: bold; }
         .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 90%; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; }
         .btn:disabled { background: #333; color: #777; }
     </style>
 </head>
 <body>
-    <h2>DASHBOARD</h2>
+    <h3>DASHBOARD</h3>
     <div class="balance">Balance: <span id="bal">0</span> NXRA</div>
     <div class="circle">
         <span style="font-size: 40px;">⚡</span>
         <div class="timer" id="tm">00:00:00</div>
     </div>
-    <!-- শুরুতে বাটনটি ডিসেবল থাকবে এবং কানেক্টিং দেখাবে -->
     <button class="btn" id="btn" onclick="claim()" disabled>CONNECTING...</button>
 
     <script>
@@ -29,35 +28,18 @@
         tg.expand();
         let itv;
 
-        // আপনার কাঙ্ক্ষিত load ফাংশনটি এখানে বসানো হয়েছে
         async function load() {
-            const user = tg.initDataUnsafe.user;
-            const uid = user ? user.id : 0;
-
-            // আইডি না পাওয়া পর্যন্ত রিকোয়েস্ট পাঠাবে না, ১ সেকেন্ড পর আবার চেষ্টা করবে
-            if (!uid || uid === 0) {
-                document.getElementById('tm').innerText = "00:00:00";
-                document.getElementById('btn').innerText = "CONNECTING...";
-                setTimeout(load, 1000); 
-                return;
-            }
+            const uid = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
+            if (!uid) { setTimeout(load, 1000); return; }
 
             try {
-                // ক্যাশ এড়াতে টাইমস্ট্যাম্পসহ রিকোয়েস্ট
-                const r = await fetch(`/api?userId=${uid}&c=${Date.now()}`);
+                const r = await fetch(`/api?userId=${uid}&cache=${Date.now()}`);
                 const d = await r.json();
+                document.getElementById('bal').innerText = (d.balance || 0).toLocaleString();
                 
-                document.getElementById('bal').innerText = Number(d.balance).toLocaleString();
-                
-                let lastMining = Number(d.lastMining) || 0;
-                if (lastMining > 0) {
-                    startTimer(lastMining);
-                } else {
-                    showReady();
-                }
-            } catch (e) { 
-                showReady(); 
-            }
+                let lm = Number(d.lastMining) || 0;
+                if (!isNaN(lm) && lm > 0) startTimer(lm); else showReady();
+            } catch (e) { showReady(); }
         }
 
         function showReady() {
@@ -73,18 +55,13 @@
             const next = lm + waitTime;
 
             itv = setInterval(() => {
-                const now = Date.now();
-                const diff = next - now;
-
-                if (diff <= 0) {
+                const diff = next - Date.now();
+                if (isNaN(diff) || diff <= 0) {
                     showReady();
                 } else {
                     document.getElementById('btn').disabled = true;
                     document.getElementById('btn').innerText = "MINING...";
-                    let h = Math.floor(diff / 3600000);
-                    let m = Math.floor((diff % 3600000) / 60000);
-                    let s = Math.floor((diff % 60000) / 1000);
-                    
+                    let h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
                     document.getElementById('tm').innerText = 
                         `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 }
@@ -105,13 +82,8 @@
                     tg.HapticFeedback.notificationOccurred('success'); 
                     load(); 
                 }
-            } catch (e) { 
-                alert("Error connecting to server"); 
-                document.getElementById('btn').disabled = false;
-            }
+            } catch (e) { document.getElementById('btn').disabled = false; }
         }
-
-        // পেজ লোড হওয়ার সাথে সাথে ফাংশনটি কল হবে
         load();
     </script>
 </body>
