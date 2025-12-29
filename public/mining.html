@@ -7,46 +7,60 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body { background: #1a1a2e; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 15px; }
-        .header { font-size: 24px; font-weight: bold; padding: 15px; border-bottom: 1px solid #333; }
-        .balance { color: #00d9a5; font-size: 20px; font-weight: bold; margin: 20px 0; }
-        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 30px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(77, 77, 255, 0.4); }
-        .timer { font-size: 36px; font-weight: bold; }
+        .balance { color: #00d9a5; font-size: 22px; font-weight: bold; margin: 30px 0; }
+        .circle { width: 230px; height: 230px; border: 8px solid #4d4dff; border-radius: 50%; margin: 20px auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 25px #4d4dff66; }
+        .timer { font-size: 38px; font-weight: bold; }
         .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 90%; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; }
-        .btn:disabled { background: #333; color: #666; }
+        .btn:disabled { background: #333; color: #777; }
     </style>
 </head>
 <body>
-    <div class="header">Dashboard</div>
+    <h2>DASHBOARD</h2>
     <div class="balance">Balance: <span id="bal">0</span> NXRA</div>
     <div class="circle">
         <span style="font-size: 40px;">⚡</span>
         <div class="timer" id="tm">00:00:00</div>
-        <p style="font-size: 12px; color: #aaa;">Tap below to start</p>
     </div>
-    <button class="btn" id="btn" onclick="claim()" disabled>LOADING...</button>
+    <!-- শুরুতে বাটনটি ডিসেবল থাকবে এবং কানেক্টিং দেখাবে -->
+    <button class="btn" id="btn" onclick="claim()" disabled>CONNECTING...</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const uid = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
         let itv;
 
+        // আপনার কাঙ্ক্ষিত load ফাংশনটি এখানে বসানো হয়েছে
         async function load() {
+            const user = tg.initDataUnsafe.user;
+            const uid = user ? user.id : 0;
+
+            // আইডি না পাওয়া পর্যন্ত রিকোয়েস্ট পাঠাবে না, ১ সেকেন্ড পর আবার চেষ্টা করবে
+            if (!uid || uid === 0) {
+                document.getElementById('tm').innerText = "00:00:00";
+                document.getElementById('btn').innerText = "CONNECTING...";
+                setTimeout(load, 1000); 
+                return;
+            }
+
             try {
-                const r = await fetch(`/api?userId=${uid}&cache=` + Date.now());
+                // ক্যাশ এড়াতে টাইমস্ট্যাম্পসহ রিকোয়েস্ট
+                const r = await fetch(`/api?userId=${uid}&c=${Date.now()}`);
                 const d = await r.json();
-                document.getElementById('bal').innerText = d.balance || 0;
                 
-                let lm = Number(d.lastMining) || 0;
-                if (lm > 0) {
-                    startTimer(lm);
+                document.getElementById('bal').innerText = Number(d.balance).toLocaleString();
+                
+                let lastMining = Number(d.lastMining) || 0;
+                if (lastMining > 0) {
+                    startTimer(lastMining);
                 } else {
-                    stopTimer();
+                    showReady();
                 }
-            } catch (e) { stopTimer(); }
+            } catch (e) { 
+                showReady(); 
+            }
         }
 
-        function stopTimer() {
+        function showReady() {
             clearInterval(itv);
             document.getElementById('tm').innerText = "00:00:00";
             document.getElementById('btn').disabled = false;
@@ -55,24 +69,30 @@
 
         function startTimer(lm) {
             clearInterval(itv);
-            const next = lm + (12 * 60 * 60 * 1000);
+            const waitTime = 12 * 60 * 60 * 1000;
+            const next = lm + waitTime;
+
             itv = setInterval(() => {
-                const diff = next - Date.now();
+                const now = Date.now();
+                const diff = next - now;
+
                 if (diff <= 0) {
-                    stopTimer();
+                    showReady();
                 } else {
                     document.getElementById('btn').disabled = true;
                     document.getElementById('btn').innerText = "MINING...";
                     let h = Math.floor(diff / 3600000);
                     let m = Math.floor((diff % 3600000) / 60000);
                     let s = Math.floor((diff % 60000) / 1000);
+                    
                     document.getElementById('tm').innerText = 
-                        (h < 10 ? '0'+h : h) + ":" + (m < 10 ? '0'+m : m) + ":" + (s < 10 ? '0'+s : s);
+                        `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 }
             }, 1000);
         }
 
         async function claim() {
+            const uid = tg.initDataUnsafe.user.id;
             document.getElementById('btn').disabled = true;
             try {
                 const r = await fetch('/api', { 
@@ -81,9 +101,17 @@
                     body: JSON.stringify({action: 'claim', userId: uid}) 
                 });
                 const d = await r.json();
-                if (d.success) { load(); tg.HapticFeedback.notificationOccurred('success'); }
-            } catch (e) { alert("Error!"); document.getElementById('btn').disabled = false; }
+                if (d.success) { 
+                    tg.HapticFeedback.notificationOccurred('success'); 
+                    load(); 
+                }
+            } catch (e) { 
+                alert("Error connecting to server"); 
+                document.getElementById('btn').disabled = false;
+            }
         }
+
+        // পেজ লোড হওয়ার সাথে সাথে ফাংশনটি কল হবে
         load();
     </script>
 </body>
