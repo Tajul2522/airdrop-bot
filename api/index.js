@@ -1,19 +1,10 @@
-// আপনার বর্তমান bot কোডের নিচে এটি যুক্ত করুন
 bot.action('mining', (ctx) => {
+    // এখানে আপনার Vercel ডোমেইন সরাসরি লিখে দিন (যেমন: https://your-bot.vercel.app/app.html)
+    const webAppUrl = "https://আপনার-প্রজেক্ট-নাম.vercel.app/app.html"; 
+    
     ctx.reply('⛏️ Start Daily Mining', 
         Markup.inlineKeyboard([
-            [Markup.button.webApp('🚀 Open Dashboard', `https://${process.env.VERCEL_URL}/app.html`)]
+            [Markup.button.webApp('🚀 Open Dashboard', webAppUrl)]
         ])
     );
-});
-
-// ওয়েব অ্যাপ থেকে 'Claim' বাটনের ডাটা রিসিভ করা
-bot.on('web_app_data', async (ctx) => {
-    const data = ctx.webAppData.data();
-    if (data === "mining_success") {
-        const userId = ctx.from.id;
-        // ডাটাবেজে ব্যালেন্স আপডেট লজিক
-        await User.findOneAndUpdate({ telegramId: userId }, { $inc: { balance: 1000 } });
-        ctx.reply("✅ Success! 1000 Nxracoin added to your balance.");
-    }
 });
