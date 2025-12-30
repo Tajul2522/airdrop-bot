@@ -1,60 +1,82 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nxracoin Dashboard</title>
+    <title>Nxracoin Mining</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background-color: #1a1c2c; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .header { font-size: 20px; font-weight: bold; margin-bottom: 30px; }
-        .balance { color: #00ffcc; font-size: 18px; margin-bottom: 20px; font-weight: bold; }
-        
-        /* Progress Circle */
-        .circle-container { position: relative; width: 220px; height: 220px; margin: 0 auto; }
-        svg { transform: rotate(-90deg); }
-        .circle-bg { fill: none; stroke: #2d2f45; stroke-width: 10; }
-        .circle-progress { fill: none; stroke: #4e46e5; stroke-width: 10; stroke-linecap: round; stroke-dasharray: 565; stroke-dashoffset: 565; transition: 0.3s; }
-        
-        .timer-info { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-        #timer { font-size: 32px; font-weight: bold; margin: 0; }
-        .status-text { font-size: 12px; color: #888; }
-        .bolt { font-size: 30px; color: #facc15; margin-bottom: 5px; }
-
-        .claim-btn { background: #00e699; border: none; padding: 15px 0; border-radius: 12px; color: #000; font-size: 18px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 40px; }
-        .claim-btn:disabled { background: #333; color: #666; }
-        .footer-info { margin-top: 25px; font-size: 14px; color: #888; line-height: 1.6; }
+        body { background: #1a1a2e; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .balance-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; margin-bottom: 30px; border: 1px solid #333; }
+        .balance-card h2 { color: #00d9a5; margin: 5px 0; font-size: 28px; }
+        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(77, 77, 255, 0.3); position: relative; }
+        .timer { font-size: 36px; font-weight: bold; }
+        .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 100%; max-width: 280px; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; margin-top: 40px; box-shadow: 0 4px 15px rgba(0, 217, 165, 0.3); }
+        .btn:disabled { background: #333; color: #777; box-shadow: none; }
     </style>
 </head>
 <body>
-    <div class="header">Dashboard</div>
-    <div class="balance">Balance: <span id="userBalance">0</span> NXRA</div>
-
-    <div class="circle-container">
-        <svg width="200" height="200">
-            <circle class="circle-bg" cx="100" cy="100" r="90"></circle>
-            <circle id="progress" class="circle-progress" cx="100" cy="100" r="90"></circle>
-        </svg>
-        <div class="timer-info">
-            <div class="bolt">⚡</div>
-            <div id="timer">00:00:00</div>
-            <div class="status-text">Tap below to start</div>
-        </div>
+    <div class="balance-card">
+        <p style="color: #aaa; margin: 0;">Total Balance</p>
+        <h2><span id="bal">0</span> Nxracoin</h2>
     </div>
 
-    <button id="claimBtn" class="claim-btn" onclick="startClaim()">CLAIM 1000 NXRA</button>
-    
-    <div class="footer-info">
-        Mining Rate: 83.3 NXRA/Hour<br>Cycle: 12 Hours
+    <div class="circle">
+        <span style="font-size: 40px;">⚡</span>
+        <div class="timer" id="tm">00:00:00</div>
+        <p style="font-size: 12px; color: #888;">12h Cycle</p>
     </div>
+
+    <button class="btn" id="btn" onclick="claim()" disabled>CONNECTING...</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        const uid = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
+        let itv;
 
-        function startClaim() {
-            tg.sendData("mining_success"); // এটি বটের কাছে সিগন্যাল পাঠাবে
+        async function load() {
+            if(!uid) { setTimeout(load, 1000); return; }
+            try {
+                const r = await fetch(`/api?userId=${uid}&cache=${Date.now()}`);
+                const d = await r.json();
+                document.getElementById('bal').innerText = Number(d.balance).toLocaleString();
+                let lm = Number(d.lastMining) || 0;
+                if (lm > 0) startTimer(lm); else showReady();
+            } catch (e) { showReady(); }
         }
+
+        function showReady() {
+            clearInterval(itv);
+            document.getElementById('tm').innerText = "00:00:00";
+            document.getElementById('btn').disabled = false;
+            document.getElementById('btn').innerText = "CLAIM 1000 NXRACOIN";
+        }
+
+        function startTimer(lm) {
+            clearInterval(itv);
+            const next = lm + (12 * 60 * 60 * 1000);
+            itv = setInterval(() => {
+                const diff = next - Date.now();
+                if (diff <= 0) showReady();
+                else {
+                    document.getElementById('btn').disabled = true;
+                    document.getElementById('btn').innerText = "MINING IN PROGRESS";
+                    let h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
+                    document.getElementById('tm').innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                }
+            }, 1000);
+        }
+
+        async function claim() {
+            document.getElementById('btn').disabled = true;
+            try {
+                const r = await fetch('/api', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'claim', userId: uid}) });
+                const d = await r.json();
+                if (d.success) { tg.HapticFeedback.notificationOccurred('success'); load(); }
+            } catch (e) { alert("Server Error"); }
+        }
+        load();
     </script>
 </body>
 </html>
