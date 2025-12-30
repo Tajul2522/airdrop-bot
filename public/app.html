@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nxracoin Dashboard</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background-color: #1a1c2c; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .header { font-size: 20px; font-weight: bold; margin-bottom: 30px; }
+        .balance { color: #00ffcc; font-size: 18px; margin-bottom: 20px; font-weight: bold; }
+        
+        /* Progress Circle */
+        .circle-container { position: relative; width: 220px; height: 220px; margin: 0 auto; }
+        svg { transform: rotate(-90deg); }
+        .circle-bg { fill: none; stroke: #2d2f45; stroke-width: 10; }
+        .circle-progress { fill: none; stroke: #4e46e5; stroke-width: 10; stroke-linecap: round; stroke-dasharray: 565; stroke-dashoffset: 565; transition: 0.3s; }
+        
+        .timer-info { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        #timer { font-size: 32px; font-weight: bold; margin: 0; }
+        .status-text { font-size: 12px; color: #888; }
+        .bolt { font-size: 30px; color: #facc15; margin-bottom: 5px; }
+
+        .claim-btn { background: #00e699; border: none; padding: 15px 0; border-radius: 12px; color: #000; font-size: 18px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 40px; }
+        .claim-btn:disabled { background: #333; color: #666; }
+        .footer-info { margin-top: 25px; font-size: 14px; color: #888; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="header">Dashboard</div>
+    <div class="balance">Balance: <span id="userBalance">0</span> NXRA</div>
+
+    <div class="circle-container">
+        <svg width="200" height="200">
+            <circle class="circle-bg" cx="100" cy="100" r="90"></circle>
+            <circle id="progress" class="circle-progress" cx="100" cy="100" r="90"></circle>
+        </svg>
+        <div class="timer-info">
+            <div class="bolt">⚡</div>
+            <div id="timer">00:00:00</div>
+            <div class="status-text">Tap below to start</div>
+        </div>
+    </div>
+
+    <button id="claimBtn" class="claim-btn" onclick="startClaim()">CLAIM 1000 NXRA</button>
+    
+    <div class="footer-info">
+        Mining Rate: 83.3 NXRA/Hour<br>Cycle: 12 Hours
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        function startClaim() {
+            tg.sendData("mining_success"); // এটি বটের কাছে সিগন্যাল পাঠাবে
+        }
+    </script>
+</body>
+</html>
