@@ -6,75 +6,51 @@
     <title>Nxracoin Mining</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background: #1a1a2e; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .balance-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; margin-bottom: 30px; border: 1px solid #333; }
-        .balance-card h2 { color: #00d9a5; margin: 5px 0; font-size: 28px; }
-        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(77, 77, 255, 0.3); position: relative; }
+        body { background: #1a1a2e; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        .bal-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; margin-bottom: 30px; border: 1px solid #333; }
+        .bal-card h2 { color: #00d9a5; margin: 5px 0; }
+        .circle { width: 220px; height: 220px; border: 8px solid #4d4dff; border-radius: 50%; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(77, 77, 255, 0.4); }
         .timer { font-size: 36px; font-weight: bold; }
-        .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 100%; max-width: 280px; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; margin-top: 40px; box-shadow: 0 4px 15px rgba(0, 217, 165, 0.3); }
-        .btn:disabled { background: #333; color: #777; box-shadow: none; }
+        .btn { background: #00d9a5; color: white; border: none; padding: 18px 0; width: 100%; max-width: 280px; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer; margin-top: 40px; }
+        .btn:disabled { background: #333; color: #777; }
     </style>
 </head>
 <body>
-    <div class="balance-card">
-        <p style="color: #aaa; margin: 0;">Total Balance</p>
-        <h2><span id="bal">0</span> Nxracoin</h2>
-    </div>
-
-    <div class="circle">
-        <span style="font-size: 40px;">⚡</span>
-        <div class="timer" id="tm">00:00:00</div>
-        <p style="font-size: 12px; color: #888;">12h Cycle</p>
-    </div>
-
-    <button class="btn" id="btn" onclick="claim()" disabled>CONNECTING...</button>
-
+    <div class="bal-card"><p style="color:#aaa;margin:0">Balance</p><h2><span id="bal">0</span> NXRA</h2></div>
+    <div class="circle"><span style="font-size:40px">⚡</span><div class="timer" id="tm">00:00:00</div><p style="font-size:12px;color:#888">12h Mining</p></div>
+    <button class="btn" id="btn" onclick="claim()" disabled>LOADING...</button>
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        const tg = window.Telegram.WebApp; tg.expand();
         const uid = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
         let itv;
-
         async function load() {
-            if(!uid) { setTimeout(load, 1000); return; }
+            if(!uid) return;
             try {
-                const r = await fetch(`/api?userId=${uid}&cache=${Date.now()}`);
+                const r = await fetch(`/api?userId=${uid}&c=${Date.now()}`);
                 const d = await r.json();
-                document.getElementById('bal').innerText = Number(d.balance).toLocaleString();
+                document.getElementById('bal').innerText = d.balance.toLocaleString();
                 let lm = Number(d.lastMining) || 0;
                 if (lm > 0) startTimer(lm); else showReady();
             } catch (e) { showReady(); }
         }
-
-        function showReady() {
-            clearInterval(itv);
-            document.getElementById('tm').innerText = "00:00:00";
-            document.getElementById('btn').disabled = false;
-            document.getElementById('btn').innerText = "CLAIM 1000 NXRACOIN";
-        }
-
+        function showReady() { clearInterval(itv); document.getElementById('tm').innerText = "00:00:00"; document.getElementById('btn').disabled = false; document.getElementById('btn').innerText = "CLAIM 1000 NXRA"; }
         function startTimer(lm) {
             clearInterval(itv);
-            const next = lm + (12 * 60 * 60 * 1000);
+            const next = lm + 43200000;
             itv = setInterval(() => {
                 const diff = next - Date.now();
                 if (diff <= 0) showReady();
                 else {
-                    document.getElementById('btn').disabled = true;
-                    document.getElementById('btn').innerText = "MINING IN PROGRESS";
-                    let h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
+                    document.getElementById('btn').disabled = true; document.getElementById('btn').innerText = "MINING...";
+                    let h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
                     document.getElementById('tm').innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 }
             }, 1000);
         }
-
         async function claim() {
             document.getElementById('btn').disabled = true;
-            try {
-                const r = await fetch('/api', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'claim', userId: uid}) });
-                const d = await r.json();
-                if (d.success) { tg.HapticFeedback.notificationOccurred('success'); load(); }
-            } catch (e) { alert("Server Error"); }
+            const r = await fetch('/api', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'claim', userId: uid}) });
+            const d = await r.json(); if (d.success) { tg.HapticFeedback.notificationOccurred('success'); load(); }
         }
         load();
     </script>
