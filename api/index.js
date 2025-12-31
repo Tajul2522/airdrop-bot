@@ -10,9 +10,9 @@ const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URI, {
             useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000
+            useUnifiedTopology: true
         });
+        console.log("MongoDB Connected");
     } catch (e) { console.error("MongoDB Connection Error", e); }
 };
 
@@ -31,7 +31,7 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-const APP_URL = "https://airdrop-bot-nine.vercel.app/app.html?v=10.0";
+const APP_URL = "https://airdrop-bot-nine.vercel.app/app.html?v=11.0";
 const REFER_BONUS = 5000;
 
 // --- স্টার্ট কমান্ড ---
@@ -53,10 +53,12 @@ bot.start(async (ctx) => {
                 await User.findOneAndUpdate({ telegramId: user.referredBy }, { $inc: { balance: REFER_BONUS, referralCount: 1 } });
             }
         }
+        
         user.actionState = 'IDLE';
         await user.save();
 
         const welcomeMsg = `👋 *Welcome to Nxracoin Reward Bot!* 🌟\n\n🚀 Earn Nxracoin daily by mining and completing tasks.`;
+        
         ctx.replyWithMarkdown(welcomeMsg, Markup.inlineKeyboard([
             [Markup.button.webApp('⛏️ Start Daily Mining', APP_URL)],
             [Markup.button.callback('📝 Start Task', 'tasks'), Markup.button.callback('🎁 Daily Bonus', 'bonus')],
@@ -66,19 +68,15 @@ bot.start(async (ctx) => {
     } catch (e) { console.error(e); }
 });
 
-// --- ৩. রেফারেল তথ্য (Fixed Logic) ---
+// --- ৩. রেফারেল তথ্য (সংশোধিত ও ফাস্ট লজিক) ---
 bot.action('referral_info', async (ctx) => {
-    // বাটন ক্লিক করার সাথে সাথে লোডিং বন্ধ করুন
-    await ctx.answerCbQuery();
-    
+    await ctx.answerCbQuery(); // লোডিং বন্ধ করা
     try {
         await connectDB();
         const user = await User.findOne({ telegramId: ctx.from.id }).lean();
         
-        // বটের ইউজারনেম পাওয়া নিশ্চিত করা
-        const botInfo = await bot.telegram.getMe();
-        const botUsername = botInfo.username;
-        
+        // বটের ইউজারনেম সরাসরি ctx থেকে নেওয়া হচ্ছে যাতে লেটেন্সি না হয়
+        const botUsername = ctx.botInfo.username;
         const refLink = `https://t.me/${botUsername}?start=${ctx.from.id}`;
         const totalCommission = (user.referralCount || 0) * REFER_BONUS;
 
@@ -91,8 +89,8 @@ bot.action('referral_info', async (ctx) => {
 
         await ctx.replyWithMarkdown(refMsg);
     } catch (e) {
-        console.error("Referral Error:", e);
-        await ctx.reply("❌ Error loading referral data. Please try again.");
+        console.error("Referral Logic Error:", e);
+        await ctx.reply("❌ Something went wrong. Please try /start again.");
     }
 });
 
@@ -113,10 +111,10 @@ bot.action('withdraw_menu', async (ctx) => {
             buttons.push([Markup.button.callback('🔄 Change Wallet Address', 'ask_wallet')]);
         }
         ctx.replyWithMarkdown(msg, Markup.inlineKeyboard(buttons));
-    } catch (e) { ctx.reply("Error loading withdraw menu."); }
+    } catch (e) { console.error(e); }
 });
 
-// --- মেসেজ লিসেনার (Wallet, Amount, Twitter) ---
+// --- মেসেজ লিসেনার (Wallet, Twitter, Amount) ---
 bot.on('text', async (ctx) => {
     try {
         await connectDB();
@@ -137,7 +135,7 @@ bot.on('text', async (ctx) => {
                 ctx.reply("❌ Invalid amount or insufficient balance!");
             } else {
                 user.balance -= amount; user.actionState = 'IDLE'; await user.save();
-                bot.telegram.sendMessage(ADMIN_ID, `🚀 *Withdrawal Request!*\nUser: @${user.username}\nAmount: ${amount}\nWallet: \`${user.wallet}\``);
+                bot.telegram.sendMessage(ADMIN_ID, `🚀 *Withdraw Request!* \nUser: @${user.username}\nAmount: ${amount}\nWallet: ${user.wallet}`);
                 ctx.reply(`✅ Request for ${amount} Nxracoin submitted!`);
             }
         }
@@ -167,8 +165,8 @@ bot.action('bonus', async (ctx) => {
     const now = new Date();
     if (!user.lastDailyBonus || (now.getTime() - new Date(user.lastDailyBonus).getTime() > 86400000)) {
         user.balance += 500; user.lastDailyBonus = now; await user.save();
-        ctx.reply(`🎁 Congratulations! You claimed 500 Nxracoin bonus!`);
-    } else { ctx.reply("❌ Already claimed! Come back tomorrow."); }
+        ctx.reply(`🎁 Bonus claimed! +500 Nxracoin`);
+    } else { ctx.reply("❌ Come back tomorrow!"); }
 });
 
 bot.action('tasks', (ctx) => {
@@ -176,21 +174,14 @@ bot.action('tasks', (ctx) => {
     ctx.replyWithMarkdown(`📋 *Tasks:*\n1. Join @YourChannel\n\nClick to submit Twitter username:`, Markup.inlineKeyboard([[Markup.button.callback('✍️ Submit Twitter', 'sub_twitter')]]));
 });
 
-bot.action('sub_twitter', (ctx) => {
-    ctx.answerCbQuery();
-    ctx.reply('Send your Twitter @username:');
-});
-
-bot.action('support', (ctx) => {
-    ctx.answerCbQuery();
-    ctx.reply('Contact Admin: @YourAdmin');
-});
+bot.action('sub_twitter', (ctx) => { ctx.answerCbQuery(); ctx.reply('Send your Twitter @username:'); });
+bot.action('support', (ctx) => { ctx.answerCbQuery(); ctx.reply('Contact Admin: @YourAdmin'); });
 
 bot.command('reset', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     await connectDB();
     await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null, lastDailyBonus: null, wallet: null, actionState: 'IDLE' });
-    ctx.reply("✅ Admin: Data Reset!");
+    ctx.reply("✅ Data Reset!");
 });
 
 // --- ভার্সেল হ্যান্ডলার ---
