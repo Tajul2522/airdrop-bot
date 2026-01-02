@@ -5,21 +5,25 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = 6955416797; 
 const BOT_USERNAME = "Nxracoin_bot"; 
 
-// 1. Database Connection
+// ১. ডাটাবেজ কানেকশন
 const connectDB = async () => {
     if (mongoose.connection.readyState >= 1) return;
     try {
-        await mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+        await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 5000
+        });
     } catch (e) { console.error("DB Error"); }
 };
 
-// 2. Database Schema (Added pendingTaskReward)
+// ২. ডাটাবেজ স্কিমা
 const UserSchema = new mongoose.Schema({
     telegramId: { type: Number, unique: true, index: true },
     username: String,
     balance: { type: Number, default: 0 },
     taskBalance: { type: Number, default: 0 },
-    pendingTaskReward: { type: Number, default: 0 }, // টাস্ক চলাকালীন সাময়িক ব্যালেন্স
+    pendingTaskReward: { type: Number, default: 0 },
     referralCount: { type: Number, default: 0 },
     referredBy: { type: Number, index: true },
     lastMining: { type: Date, default: null },
@@ -31,25 +35,29 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-mongoose.connect(process.env.MONGO_URI);
-
 const APP_URL = `https://airdrop-bot-nine.vercel.app/app.html?v=${Date.now()}`;
 const JOIN_BONUS = 5000;
 const REF_BONUS = 5000;
 const TASK_REWARD = 1000;
 
-// --- 3. Validation Helpers ---
-const isValidEmail = (text) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
-const isValidTwitter = (text) => text.includes('x.com/') || text.includes('twitter.com/');
-const isValidRetweet = (text) => (text.includes('x.com/') || text.includes('twitter.com/')) && text.includes('/status/');
-const isValidLinkedIn = (text) => text.includes('linkedin.com/');
-const isValidFacebook = (text) => text.includes('facebook.com/');
+// --- ৩. মেনু বাটন লেবেল (একদম নিখুঁত নাম) ---
+const BTN_MINING = '⛏️ Start Daily Mining';
+const BTN_TASKS = '📝 Social Tasks';
+const BTN_BONUS = '🎁 Daily Bonus';
+const BTN_WITHDRAW = '🏦 Withdraw';
+const BTN_REFERRAL = '👥 Referral';
+const BTN_SUPPORT = '☎️ Support';
 
-// --- 4. Task Finalization (The Security Logic) ---
+const mainMenu = Markup.keyboard([
+    [BTN_MINING],
+    [BTN_TASKS, BTN_BONUS],
+    [BTN_WITHDRAW, BTN_REFERRAL],
+    [BTN_SUPPORT]
+]).resize();
+
+// --- ৪. টাস্ক সামারি এবং ফাইনাল ব্যালেন্স যোগ ---
 const finalizeTasks = async (ctx, user) => {
     const totalEarned = user.pendingTaskReward;
-    
-    // মেইন ব্যালেন্সে টাকা যোগ হবে শুধুমাত্র এখন
     const finalUser = await User.findOneAndUpdate(
         { telegramId: user.telegramId },
         { 
@@ -65,34 +73,40 @@ const finalizeTasks = async (ctx, user) => {
     const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
     
     const summaryMsg = `🎉 <b>Congratulations, ${username}!</b>\n\n` +
-        `✅ <b>Status:</b> All tasks submitted for review.\n` +
+        `✅ <b>Status:</b> Tasks submitted successfully.\n` +
         `💰 <b>Task Rewards:</b> ${totalEarned} NXRA\n` +
         `💵 <b>Total Balance:</b> ${finalUser.balance} NXRA\n\n` +
         `👥 <b>Total Referrals:</b> ${finalUser.referralCount || 0}\n` +
         `🔗 <b>Your Link:</b>\n${refLink}\n\n` +
-        `⚠️ <i>Admin will verify details manually. Fake links = Permanent Ban!</i>`;
+        `⚠️ <i>Verification in progress. Fake links = Ban!</i>`;
 
     return ctx.replyWithHTML(summaryMsg);
 };
 
+// টাস্ক ধাপ হ্যান্ডলার
 const askStep = async (ctx, state, text, skip) => {
     await connectDB();
     await User.findOneAndUpdate({ telegramId: ctx.from.id }, { actionState: state });
     return ctx.replyWithHTML(text, Markup.inlineKeyboard([[Markup.button.callback('⏭️ Skip This Task', skip)]]));
 };
 
-// --- 5. Bot Commands ---
+// --- ৫. বটের মেইন কমান্ড ও বাটন হ্যান্ডলিং ---
 
 bot.start(async (ctx) => {
     try {
         await connectDB();
         const userId = ctx.from.id;
         const refId = ctx.payload;
-        let user = await User.findOne({ telegramId: userId });
 
+        let user = await User.findOne({ telegramId: userId });
         if (!user) {
             let inviter = (refId && Number(refId) !== userId) ? Number(refId) : null;
-            user = new User({ telegramId: userId, username: ctx.from.username || 'User', balance: inviter ? JOIN_BONUS : 0, referredBy: inviter });
+            user = new User({
+                telegramId: userId,
+                username: ctx.from.username || 'User',
+                balance: inviter ? JOIN_BONUS : 0,
+                referredBy: inviter
+            });
             await user.save();
             if (inviter) {
                 await User.findOneAndUpdate({ telegramId: inviter }, { $inc: { balance: REF_BONUS, referralCount: 1 } });
@@ -100,24 +114,52 @@ bot.start(async (ctx) => {
             }
         }
         await User.findOneAndUpdate({ telegramId: userId }, { actionState: 'IDLE' });
-        ctx.replyWithHTML(`👋 <b>Welcome to NXRA Reward Bot!</b>`, 
-            Markup.keyboard([['⛏️ Start Daily Mining'],['📝 Social Tasks', '🎁 Daily Bonus'],['🏦 Withdraw', '👥 Referral'],['☎️ Support']]).resize());
+        ctx.replyWithHTML(`👋 <b>Welcome to NXRA Reward Bot!</b>`, mainMenu);
     } catch (e) { console.error(e); }
 });
 
-bot.hears('📝 Social Tasks', async (ctx) => {
+// বাটনগুলো শোনার জন্য bot.hears ব্যবহার করা হয়েছে
+bot.hears(BTN_MINING, (ctx) => ctx.replyWithMarkdown(`🚀 *Open NXRA App* to mine:`, Markup.inlineKeyboard([[Markup.button.webApp('⛏️ Open Mining App', APP_URL)]])));
+
+bot.hears(BTN_TASKS, async (ctx) => {
     await connectDB();
     const user = await User.findOne({ telegramId: ctx.from.id });
     if (user && user.allTasksFinished) return ctx.replyWithHTML("✅ <b>Tasks already completed!</b>");
-    
-    // টাস্ক নতুন করে শুরু করলে পেন্ডিং ব্যালেন্স ০ করা হচ্ছে
     await User.findOneAndUpdate({ telegramId: ctx.from.id }, { pendingTaskReward: 0 });
-    
-    ctx.replyWithHTML(`<b>📋 NXRA Social Tasks</b>\nComplete tasks to earn NXRA. Rewards are added ONLY at the end.`,
+    ctx.replyWithHTML(`<b>📋 NXRA Social Tasks</b>\nEarn 1,000 per task. Rewards added ONLY at the end.`,
     Markup.inlineKeyboard([[Markup.button.callback('🚀 Start Submitting', 'step_email')]]));
 });
 
-// Task actions
+bot.hears(BTN_BONUS, async (ctx) => {
+    await connectDB();
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    const now = new Date();
+    if (!user.lastDailyBonus || (Date.now() - new Date(user.lastDailyBonus).getTime() > 86400000)) {
+        await User.findOneAndUpdate({ telegramId: ctx.from.id }, { $inc: { balance: 500 }, lastDailyBonus: new Date() });
+        ctx.reply("🎁 500 NXRA bonus added!");
+    } else ctx.reply("❌ Claim tomorrow!");
+});
+
+bot.hears(BTN_REFERRAL, async (ctx) => {
+    await connectDB();
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    const refLink = `https://t.me/${BOT_USERNAME}?start=${ctx.from.id}`;
+    ctx.replyWithHTML(`<b>👥 NXRA Referral</b>\n\n🎁 Join: 5000 NXRA\n💰 Per Ref: 5000 NXRA\n📊 Total Refs: ${user.referralCount || 0}\n🔗 <b>Your Link:</b>\n${refLink}`);
+});
+
+bot.hears(BTN_WITHDRAW, async (ctx) => {
+    await connectDB();
+    const user = await User.findOne({ telegramId: ctx.from.id });
+    const wallet = user.wallet ? `<code>${user.wallet}</code>` : "Not Set";
+    ctx.replyWithHTML(`🏦 <b>Withdraw</b>\n💰 Balance: ${user.balance} NXRA\n💳 Wallet: ${wallet}`, Markup.inlineKeyboard([
+        [!user.wallet ? Markup.button.callback('✍️ Set Wallet', 'ask_wallet') : Markup.button.callback('💸 Withdraw Now', 'ask_amount')],
+        [Markup.button.callback('🔄 Change Wallet', 'ask_wallet')]
+    ]));
+});
+
+bot.hears(BTN_SUPPORT, (ctx) => ctx.reply("Support: @tajul15"));
+
+// --- ৬. ইনলাইন বাটন হ্যান্ডলারসমূহ ---
 bot.action('step_email', (ctx) => { ctx.answerCbQuery(); return askStep(ctx, 'ASK_EMAIL', "📧 <b>Step 1:</b> Send Email:", 'step_tg'); });
 bot.action('step_tg', (ctx) => { ctx.answerCbQuery(); return askStep(ctx, 'ASK_TG', "📢 <b>Step 2:</b> Join Channel & Group. Send TG @username:", 'step_twitter'); });
 bot.action('step_twitter', (ctx) => { ctx.answerCbQuery(); return askStep(ctx, 'ASK_TW', "🐦 <b>Step 3:</b> Follow Twitter. Send Profile Link:", 'step_retweet'); });
@@ -132,82 +174,51 @@ bot.action('finish_tasks', async (ctx) => {
     await finalizeTasks(ctx, user);
 });
 
-// --- 6. Message Listener (Strict Validation & Temp Rewards) ---
+// --- ৭. মেসেজ লিসেনার (Validation & Strict Rewards) ---
 bot.on('text', async (ctx) => {
-    const text = ctx.message.text.trim();
-    if (text.startsWith('/') || ['⛏️ Start Daily Mining', '📝 Social Tasks', '🎁 Daily Bonus', '🏦 Withdraw', '👥 Referral', '☎️ Support'].includes(text)) return;
-
     await connectDB();
-    const user = await User.findOne({ telegramId: ctx.from.id });
+    const userId = ctx.from.id;
+    const text = ctx.message.text.trim();
+    const menuButtons = [BTN_MINING, BTN_TASKS, BTN_BONUS, BTN_WITHDRAW, BTN_REFERRAL, BTN_SUPPORT];
+    
+    if (text.startsWith('/') || menuButtons.includes(text)) return;
+
+    const user = await User.findOne({ telegramId: userId });
     if (!user || user.actionState === 'IDLE') return;
 
-    // টেম্পোরারি রিওয়ার্ড ফাংশন
     const saveTempReward = async (field, nextAction) => {
-        await User.findOneAndUpdate({ telegramId: ctx.from.id }, { [field]: text, $inc: { pendingTaskReward: TASK_REWARD }, actionState: 'IDLE' });
-        ctx.reply(`✅ Saved! +1000 NXRA pending.`, Markup.inlineKeyboard([[Markup.button.callback('➡️ Next Task', nextAction)]]));
+        await User.findOneAndUpdate({ telegramId: userId }, { [field]: text, $inc: { pendingTaskReward: TASK_REWARD }, actionState: 'IDLE' });
+        ctx.reply(`✅ Detail Saved! +1000 NXRA pending.`, Markup.inlineKeyboard([[Markup.button.callback('➡️ Next Task', nextAction)]]));
     };
 
     const st = user.actionState;
-    if (st === 'ASK_EMAIL' && isValidEmail(text)) await saveTempReward('email', 'step_tg');
+    if (st === 'ASK_EMAIL' && text.includes('@')) await saveTempReward('email', 'step_tg');
     else if (st === 'ASK_TG' && text.startsWith('@')) await saveTempReward('username', 'step_twitter');
-    else if (st === 'ASK_TW' && isValidTwitter(text)) await saveTempReward('twitter', 'step_retweet');
-    else if (st === 'ASK_RT' && isValidRetweet(text)) await saveTempReward('retweet', 'step_linkedin');
-    else if (st === 'ASK_LI' && isValidLinkedIn(text)) await saveTempReward('linkedin', 'step_facebook');
-    else if (st === 'ASK_FB' && isValidFacebook(text)) {
-        // সর্বশেষ ধাপে টেম্প রিওয়ার্ড বাড়িয়ে ফাইনাল করা হচ্ছে
-        const updatedUser = await User.findOneAndUpdate(
-            { telegramId: ctx.from.id }, 
-            { facebook: text, $inc: { pendingTaskReward: TASK_REWARD }, actionState: 'IDLE' }, 
-            { new: true }
-        );
-        await finalizeTasks(ctx, updatedUser);
-    } 
-    else if (st === 'AWAITING_WALLET' && text.startsWith('0x')) {
-        await User.findOneAndUpdate({ telegramId: ctx.from.id }, { wallet: text, actionState: 'IDLE' });
+    else if (st === 'ASK_TW' && text.includes('x.com')) await saveTempReward('twitter', 'step_retweet');
+    else if (st === 'ASK_RT' && text.includes('status')) await saveTempReward('retweet', 'step_linkedin');
+    else if (st === 'ASK_LI' && text.includes('linkedin')) await saveTempReward('linkedin', 'step_facebook');
+    else if (st === 'ASK_FB' && text.includes('facebook')) {
+        const finalUser = await User.findOneAndUpdate({ telegramId: userId }, { facebook: text, $inc: { pendingTaskReward: TASK_REWARD }, actionState: 'IDLE' }, {new: true});
+        await finalizeTasks(ctx, finalUser);
+    } else if (st === 'AWAITING_WALLET' && text.startsWith('0x')) {
+        await User.findOneAndUpdate({ telegramId: userId }, { wallet: text, actionState: 'IDLE' });
         ctx.reply("✅ Wallet Address Saved!");
     } else if (st === 'AWAITING_AMT') {
         const amt = Number(text);
         if (amt > 0 && amt <= user.balance) {
-            await User.findOneAndUpdate({ telegramId: ctx.from.id }, { $inc: { balance: -amt }, actionState: 'IDLE' });
-            bot.telegram.sendMessage(ADMIN_ID, `🚀 Withdraw: ${amt} NXRA | Wallet: ${user.wallet}`);
+            await User.findOneAndUpdate({ telegramId: userId }, { $inc: { balance: -amt }, actionState: 'IDLE' });
+            bot.telegram.sendMessage(ADMIN_ID, `Withdraw: ${amt} NXRA | Wallet: ${user.wallet}`);
             ctx.reply("✅ Withdrawal submitted!");
         } else ctx.reply("❌ Invalid amount.");
     } else {
-        ctx.reply("⚠️ Invalid Format! Enter real details to earn NXRA.");
+        ctx.reply("⚠️ Invalid format! Please send real details.");
     }
 });
 
-// --- 7. Regular Bot Features ---
-bot.hears('⛏️ Start Daily Mining', (ctx) => ctx.replyWithMarkdown(`🚀 *Open App* to mine:`, Markup.inlineKeyboard([[Markup.button.webApp('⛏️ Open Mining App', APP_URL)]])));
-bot.hears('🎁 Daily Bonus', async (ctx) => {
-    await connectDB(); const user = await User.findOne({ telegramId: ctx.from.id });
-    if (!user.lastDailyBonus || (Date.now() - new Date(user.lastDailyBonus).getTime() > 86400000)) {
-        await User.findOneAndUpdate({ telegramId: ctx.from.id }, { $inc: { balance: 500 }, lastDailyBonus: new Date() });
-        ctx.reply("🎁 500 NXRA added!");
-    } else ctx.reply("❌ Claim tomorrow!");
-});
-bot.hears('👥 Referral', async (ctx) => {
-    await connectDB(); const user = await User.findOne({ telegramId: ctx.from.id });
-    const refLink = `https://t.me/${BOT_USERNAME}?start=${ctx.from.id}`;
-    ctx.replyWithHTML(`<b>👥 Referral Program</b>\n\n🎁 Join: 5000 NXRA\n💰 Per Ref: 5000 NXRA\n📊 Total Refs: ${user.referralCount || 0}\n🔗 <b>Your Link:</b>\n${refLink}`);
-});
-bot.hears('🏦 Withdraw', async (ctx) => {
-    await connectDB(); const user = await User.findOne({ telegramId: ctx.from.id });
-    const wallet = user.wallet ? `<code>${user.wallet}</code>` : "Not Set";
-    ctx.replyWithHTML(`🏦 <b>Withdraw</b>\n💰 Balance: ${user.balance} NXRA\n💳 Wallet: ${wallet}`, Markup.inlineKeyboard([[!user.wallet ? Markup.button.callback('✍️ Set Wallet', 'ask_wallet') : Markup.button.callback('💸 Withdraw Now', 'ask_amount')],[Markup.button.callback('🔄 Change Wallet', 'ask_wallet')]]));
-});
-bot.hears('☎️ Support', (ctx) => ctx.reply("Support: @tajul15"));
 bot.action('ask_wallet', async (ctx) => { await User.findOneAndUpdate({ telegramId: ctx.from.id }, { actionState: 'AWAITING_WALLET' }); ctx.reply("Send BEP-20 Wallet Address:"); });
-bot.action('ask_amount', async (ctx) => { await User.findOneAndUpdate({ telegramId: ctx.from.id }, { actionState: 'AWAITING_AMT' }); ctx.reply("Enter amount:"); });
+bot.action('ask_amount', async (ctx) => { await User.findOneAndUpdate({ telegramId: ctx.from.id }, { actionState: 'AWAITING_AMOUNT' }); ctx.reply("Enter amount to withdraw:"); });
 
-bot.command('reset', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    await connectDB();
-    await User.findOneAndUpdate({ telegramId: ADMIN_ID }, { lastMining: null, lastDailyBonus: null, wallet: null, actionState: 'IDLE', balance: 0, taskBalance: 0, pendingTaskReward: 0, referralCount: 0, allTasksFinished: false });
-    ctx.reply("✅ Reset!");
-});
-
-// Vercel Handler
+// --- ৮. ভার্সেল হ্যান্ডলার ---
 module.exports = async (req, res) => {
     try {
         await connectDB();
